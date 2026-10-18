@@ -17,5 +17,3 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
   app.register(storageRoutes);
 };
 
-// cmt8hq4c90001joril02xyhcz
-// cmt8hq4bv0000jorikckn1sp4

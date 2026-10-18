@@ -1,3 +1,4 @@
+
 import { Worker } from "bullmq";
 import { env } from "../config/env.js";
 import { FILE_PROCESSING_QUEUE } from "../infrastructure/queue/file-processing.queue.js";
@@ -19,23 +20,43 @@ export const fileProcessingWorker = new Worker<FileProcessingJobData>(
   FILE_PROCESSING_QUEUE,
   async (job) => {
     const { jobId, fileId } = job.data;
-
     const attemptNumber = job.attemptsMade + 1;
 
-    console.log(`[worker] Starting attempt ${attemptNumber} for job ${jobId}`);
-
-    await recordJobAttempt(jobId);
-
-    const startedAt = Date.now();
+    console.log(
+      `[worker] Starting attempt ${attemptNumber} for job ${jobId}`,
+    );
 
     try {
       const currentJob = await getJobById(jobId);
 
+      if (
+        currentJob.status === "FAILED" ||
+        currentJob.status === "COMPLETED"
+      ) {
+        console.log(
+          `[worker] Skipping terminal job ${jobId}: ${currentJob.status}`,
+        );
+        return;
+      }
+
+      if (
+        currentJob.status !== "PENDING" &&
+        currentJob.status !== "PROCESSING"
+      ) {
+        throw new Error(
+          `Job ${jobId} cannot be processed from status ${currentJob.status}`,
+        );
+      }
+
+      await recordJobAttempt(jobId);
+
+      const startedAt = Date.now();
+
       if (currentJob.status === "PENDING") {
         await changeJobStatus(jobId, "PROCESSING");
       }
-      const processingJob = await getJobById(jobId);
 
+      const processingJob = await getJobById(jobId);
       const file = processingJob.file;
 
       if (!file || file.id !== fileId) {
@@ -57,21 +78,23 @@ export const fileProcessingWorker = new Worker<FileProcessingJobData>(
       );
 
       console.log(`[worker] Processing file: ${file.originalName}`);
-
       console.log(`[worker] File size: ${buffer.length} bytes`);
-
       console.log(`[worker] MIME type: ${file.mimeType}`);
-
       console.log(`[worker] Processing duration: ${durationMs} ms`);
 
       await changeJobStatus(jobId, "COMPLETED");
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Unknown processing error";
+        error instanceof Error
+          ? error.message
+          : "Unknown processing error";
 
-      console.error(`[worker] Processing failed for job ${jobId}: ${message}`);
+      console.error(
+        `[worker] Processing failed for job ${jobId}: ${message}`,
+      );
 
-      const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      const isFinalAttempt =
+        job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
 
       if (isFinalAttempt) {
         try {
@@ -104,7 +127,10 @@ fileProcessingWorker.on("completed", (job) => {
 });
 
 fileProcessingWorker.on("failed", (job, error) => {
-  console.error(`[worker] Job failed: ${job?.id ?? "unknown"}`, error);
+  console.error(
+    `[worker] Job failed: ${job?.id ?? "unknown"}`,
+    error,
+  );
 });
 
 fileProcessingWorker.on("error", (error) => {
@@ -118,5 +144,3 @@ fileProcessingWorker.on("stalled", (jobId) => {
 fileProcessingWorker.on("active", (job) => {
   console.log(`[worker] Job active: ${job.id}`);
 });
-
-// cmtgdzzrt000ekgripwjqig0n

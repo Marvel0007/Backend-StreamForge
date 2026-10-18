@@ -17,3 +17,9 @@ Thumbs.db
 
 # Local file storage
 /storage/
+
+# Scratch & test artifacts
+*.txt
+create-test-user.mjs
+inspect-retry-file.mts
+

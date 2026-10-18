@@ -82,6 +82,22 @@ export async function updateJobStatus(
   });
 }
 
+export async function updateJobStatusIfCurrent(
+  id: string,
+  currentStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED",
+  nextStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED",
+) {
+  return prisma.job.updateMany({
+    where: {
+      id,
+      status: currentStatus,
+    },
+    data: {
+      status: nextStatus,
+    },
+  });
+}
+
 export async function markJobFailed(id: string, error: string) {
   return prisma.job.update({
     where: {
@@ -110,36 +126,46 @@ export async function updateJobProcessingMetadata(
   });
 }
 
+
 export async function updateJobAndFileStatus(
   jobId: string,
   fileId: string,
   status: NonNullable<Prisma.JobUpdateInput["status"]>,
   error?: string,
+  expectedStatuses: (
+    "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED"
+  )[] = ["PENDING", "PROCESSING", "FAILED"],
 ) {
   return prisma.$transaction(async (tx) => {
-    const job = await tx.job.update({
+    const result = await tx.job.updateMany({
       where: {
         id: jobId,
+        fileId,
+        status: {
+          in: expectedStatuses,
+        },
       },
       data: {
         status,
-        ...(error !== undefined
-          ? {
-              error,
-            }
-          : {}),
+        ...(error !== undefined ? { error } : {}),
       },
     });
+
+    if (result.count !== 1) {
+      throw new Error(
+        `Job ${jobId} was not updated because its status or file association changed`,
+      );
+    }
 
     await tx.file.update({
-      where: {
-        id: fileId,
-      },
-      data: {
-        status,
-      },
+      where: { id: fileId },
+      data: { status },
     });
 
-    return job;
+    return tx.job.findUniqueOrThrow({
+      where: { id: jobId },
+      include: { file: true },
+    });
   });
 }
+

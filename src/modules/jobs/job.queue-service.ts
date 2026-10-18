@@ -5,12 +5,13 @@ export async function enqueueFileProcessing(
   fileId: string,
 ): Promise<void> {
   await fileProcessingQueue.add(
-    "process-file",
+    "file-processing",
     {
       jobId,
       fileId,
     },
     {
+      jobId,
       attempts: 3,
       backoff: {
         type: "exponential",

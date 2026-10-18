@@ -61,7 +61,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const job = await cancelJob(request.params.id);
 
       return reply.send({
-        data: job,
+        data: toJobResponse(job),
       });
     },
   );
@@ -71,7 +71,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const job = await retryJob(request.params.id);
 
       return reply.send({
-        data: job,
+        data: toJobResponse(job),
       });
     },
   );
@@ -105,7 +105,7 @@ export const jobRoutes: FastifyPluginAsync = async (app) => {
       const job = await changeJobStatus(request.params.id, request.body.status);
 
       return reply.send({
-        data: job,
+        data: toJobResponse(job),
       });
     },
   );

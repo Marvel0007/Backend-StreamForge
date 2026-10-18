@@ -105,7 +105,13 @@ export async function changeJobStatus(id: string, status: JobStatus) {
     );
   }
 
-  return updateJobAndFileStatus(id, job.fileId, status);
+  return updateJobAndFileStatus(
+    id,
+    job.fileId,
+    status,
+    undefined,
+    [currentStatus],
+  );
 }
 
 export async function recordJobAttempt(id: string) {
@@ -122,6 +128,7 @@ export async function failJob(id: string, error: string) {
   return updateJobAndFileStatus(id, job.fileId, "FAILED", error);
 }
 
+
 export async function retryJob(jobId: string) {
   const job = await getJobById(jobId);
 
@@ -136,6 +143,16 @@ export async function retryJob(jobId: string) {
   const existingQueueJob = await fileProcessingQueue.getJob(jobId);
 
   if (existingQueueJob) {
+    const queueState = await existingQueueJob.getState();
+
+    if (queueState === "active") {
+      throw new AppError(
+        "The queue job is still active and cannot be retried yet",
+        409,
+        "QUEUE_JOB_ACTIVE",
+      );
+    }
+
     await existingQueueJob.remove();
   }
 
@@ -143,23 +160,36 @@ export async function retryJob(jobId: string) {
 
   await changeJobStatus(jobId, "PENDING");
 
-  await fileProcessingQueue.add(
-    "file-processing",
-    {
-      jobId: job.id,
-      fileId: job.file.id,
-    },
-    {
-      jobId: job.id,
-      attempts: job.maxAttempts,
-      backoff: {
-        type: "exponential",
-        delay: 1000,
+  try {
+    await fileProcessingQueue.add(
+      "file-processing",
+      {
+        jobId: job.id,
+        fileId: job.file.id,
       },
-      removeOnComplete: false,
-      removeOnFail: false,
-    },
-  );
+      {
+        jobId: job.id,
+        attempts: job.maxAttempts,
+        backoff: {
+          type: "exponential",
+          delay: 1000,
+        },
+        removeOnComplete: false,
+        removeOnFail: false,
+      },
+    );
+  } catch (error) {
+    try {
+      await changeJobStatus(jobId, "FAILED");
+    } catch (rollbackError) {
+      console.error(
+        `[job] Failed to roll back retry for ${jobId}:`,
+        rollbackError,
+      );
+    }
+
+    throw error;
+  }
 
   return getJobById(jobId);
 }
@@ -177,9 +207,34 @@ export async function cancelJob(jobId: string) {
 
   const existingQueueJob = await fileProcessingQueue.getJob(jobId);
 
-  if (existingQueueJob) {
+  if (!existingQueueJob) {
+    throw new AppError(
+      "Queue job not found; cancellation could not be confirmed",
+      409,
+      "QUEUE_JOB_NOT_FOUND",
+    );
+  }
+
+  const queueState = await existingQueueJob.getState();
+
+  if (queueState !== "waiting" && queueState !== "delayed") {
+    throw new AppError(
+      "Job has already started or is not cancellable",
+      409,
+      "JOB_NOT_CANCELLABLE",
+    );
+  }
+
+  try {
     await existingQueueJob.remove();
+  } catch {
+    throw new AppError(
+      "Job started before it could be cancelled; try again after checking its status",
+      409,
+      "JOB_CANCELLATION_RACE",
+    );
   }
 
   return changeJobStatus(jobId, "FAILED");
 }
+
