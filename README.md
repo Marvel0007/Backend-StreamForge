@@ -48,32 +48,32 @@ In traditional web applications, handling large file uploads and synchronous pro
 
 ```mermaid
 flowchart TD
-    Client([Client / Frontend])
+    Client["Client / Frontend"]
     
-    subgraph API_Layer ["API Layer (Fastify + TypeScript)"]
+    subgraph API_Layer ["API Layer - Fastify & TypeScript"]
         UploadEndpoint["POST /api/v1/files/upload"]
         JobControls["Queue & Job Management Endpoints"]
         Validator["Zod Validation & AppError Handler"]
     end
 
     subgraph Storage_Layer ["Storage Layer"]
-        LocalStorage["Local / Object Storage Provider\n(users/:id/files/:uuid)"]
+        LocalStorage["Local / Object Storage Provider<br/>users/:id/files/:uuid"]
     end
 
-    subgraph Database_Layer ["Database Layer (PostgreSQL + Prisma)"]
-        UserTable[(User Model)]
-        FileTable[(File Model)]
-        JobTable[(Job Model)]
-        PartialIndex["Partial Unique Index\n(fileId WHERE status IN PENDING, PROCESSING)"]
+    subgraph Database_Layer ["Database Layer - PostgreSQL & Prisma"]
+        UserTable[("User Table")]
+        FileTable[("File Table")]
+        JobTable[("Job Table")]
+        PartialIndex["Partial Unique Index<br/>fileId WHERE status IN PENDING, PROCESSING"]
     end
 
-    subgraph Queue_Layer ["Distributed Message Broker (Redis + BullMQ)"]
+    subgraph Queue_Layer ["Distributed Message Broker - Redis & BullMQ"]
         Queue["file-processing Queue"]
-        DeadLetter["Retry / Exponential Backoff Engine"]
+        DeadLetter["Retry & Exponential Backoff Engine"]
     end
 
-    subgraph Worker_Pool ["Worker Layer (Dedicated Node.js Process)"]
-        Worker["fileProcessingWorker\n(Configurable Concurrency & Rate Limiting)"]
+    subgraph Worker_Pool ["Worker Layer - Dedicated Node.js Process"]
+        Worker["fileProcessingWorker<br/>Configurable Concurrency & Rate Limiting"]
     end
 
     Client -->|1. Multipart Upload| UploadEndpoint
@@ -82,7 +82,7 @@ flowchart TD
     UploadEndpoint -->|3. ACID Transaction: File + Job| FileTable
     UploadEndpoint -->|3. Record Associations| JobTable
     UploadEndpoint -->|4. Dispatch Job| Queue
-    UploadEndpoint -.->|5. Return 201 Created (sub-millisecond)| Client
+    UploadEndpoint -.->|5. Return 201 Created instantly| Client
 
     Queue -->|6. Dequeue Next Job| Worker
     Worker -->|7. Fetch Binary for Processing| LocalStorage
@@ -163,7 +163,7 @@ erDiagram
     FILE ||--o{ JOB : triggers
 
     USER {
-        string id PK "cuid()"
+        string id PK "cuid"
         string email UK "unique"
         string name
         datetime createdAt
@@ -171,24 +171,24 @@ erDiagram
     }
 
     FILE {
-        string id PK "cuid()"
+        string id PK "cuid"
         string userId FK "indexed"
         string originalName
         string storageKey UK "unique"
         string mimeType
         bigint size
-        enum status "PENDING | PROCESSING | COMPLETED | FAILED"
+        string status "PENDING, PROCESSING, COMPLETED, FAILED"
         datetime createdAt
         datetime updatedAt
     }
 
     JOB {
-        string id PK "cuid()"
+        string id PK "cuid"
         string fileId FK "indexed"
-        enum type "FILE_PROCESSING"
-        enum status "PENDING | PROCESSING | COMPLETED | FAILED"
-        int attempts "default: 0"
-        int maxAttempts "default: 3"
+        string type "FILE_PROCESSING"
+        string status "PENDING, PROCESSING, COMPLETED, FAILED"
+        int attempts "default 0"
+        int maxAttempts "default 3"
         string error
         bigint processedBytes
         int processingTimeMs
